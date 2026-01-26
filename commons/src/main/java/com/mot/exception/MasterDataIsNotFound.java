@@ -7,7 +7,7 @@ public class MasterDataIsNotFound extends  BusinessException {
     protected HttpStatus getHttpStatus() {
         return HttpStatus.FOUND;
     }
-    public MasterDataIsNotFound(String... mess){
+    public MasterDataIsNotFound(String mess){
         super(mess);
     }
 

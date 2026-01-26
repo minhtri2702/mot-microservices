@@ -27,4 +27,5 @@ public class SocialAccounts {
     private String providerId; // Nullable
     @Column(name = "linked_at")
     private Date linkedAt;
+
 }

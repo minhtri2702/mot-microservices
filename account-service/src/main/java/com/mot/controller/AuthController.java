@@ -7,6 +7,7 @@ import com.mot.services.AuthService;
 import com.mot.response.BaseResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.aspectj.bridge.Message;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,7 +24,7 @@ public class AuthController {
 
     @PostMapping("/signup")
     public ResponseEntity<BaseResponse<User>> registerUser(@Valid @RequestBody SignupRequest signupRequest){
-        return ResponseEntity.ok(BaseResponse.ok(authService.registerUser(signupRequest)));
+        return ResponseEntity.ok(BaseResponse.ok(authService.registerUser(signupRequest),"User registered successfully!"));
     }
 }
 

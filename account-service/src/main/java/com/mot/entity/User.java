@@ -1,5 +1,6 @@
 package com.mot.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -8,6 +9,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(name = "users")
@@ -17,17 +19,19 @@ import java.util.List;
 @NoArgsConstructor
 public class User {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue
+    @Column(columnDefinition = "uuid")
+    private UUID id;
     @Column(unique = true, nullable = false)
     private String email;
     @Column(name = "full_name")
     private String userName;
     @Column
+    @JsonIgnore
     private String password; // Nullable
     @Column(name= "avatar_url")
     private String avatarUrl;
-    @Column(name="is_active")
+    @Column(name="is_active", columnDefinition = "boolean default true")
     private boolean isActive;
     @CreationTimestamp
     @Temporal(TemporalType.TIMESTAMP)

@@ -1,5 +1,6 @@
 package com.mot.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mot.enums.ERole;
 import jakarta.persistence.*;
 import lombok.*;
@@ -23,6 +24,7 @@ public class Role {
     @ManyToMany(mappedBy = "roles")
     @EqualsAndHashCode.Exclude
     @ToString.Exclude
+    @JsonIgnore
     private Collection<User> users;
 
 }
