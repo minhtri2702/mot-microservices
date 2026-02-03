@@ -27,7 +27,6 @@
 
     <modules>
         <module>commons</module>
-<!--        <module>auth-service</module>-->
         <module>account-service</module>
     </modules>
 

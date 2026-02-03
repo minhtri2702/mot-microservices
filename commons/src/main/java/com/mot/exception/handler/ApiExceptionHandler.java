@@ -30,7 +30,7 @@ public class ApiExceptionHandler {
         ApiError apiError = new ApiError(httpStatus.value() , ex.getMessage());
         return new BaseResponse(false, apiError, "Master data is not found");
     }
-    @ExceptionHandler(MasterDataIsNotFound.class)
+    @ExceptionHandler(UnauthorizedException.class)
     @ResponseStatus(HttpStatus.FOUND)
     public BaseResponse handleUnauthorized(UnauthorizedException ex, WebRequest request) {
         log.error(ex.getMessage());

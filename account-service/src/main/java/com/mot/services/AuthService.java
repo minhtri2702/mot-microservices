@@ -17,8 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
-import java.security.Key;
-import io.jsonwebtoken.security.Keys;
+
 import java.util.HashSet;
 import java.util.Set;
 
@@ -71,13 +70,7 @@ public class AuthService {
         socialAccounts = socialAccountsRepository.save(socialAccounts);
         return user;
     }
-    private String generateJWTTokenWithUserDetail(){
-        return null;
-    }
 
 
-    private Key key() {
-        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
-    }
 }
 

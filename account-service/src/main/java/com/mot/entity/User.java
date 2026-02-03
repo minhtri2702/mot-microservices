@@ -24,7 +24,6 @@ public class User {
     private UUID id;
     @Column(unique = true, nullable = false)
     private String email;
-    @Column(name = "full_name")
     private String userName;
     @Column
     @JsonIgnore

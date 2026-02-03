@@ -9,15 +9,16 @@ services:
       POSTGRES_DB: mot_db
       POSTGRES_USER: mot_admin
       POSTGRES_PASSWORD: "0000"
+
     ports:
       - "5432:5432"
     volumes:
       - mot-db-data:/var/lib/postgresql/data
 
-  auth-service:
+  account-service:
     build:
-      context: ./auth-service
-    container_name: auth-service
+      context: ./account-service
+    container_name: account-service
     ports:
       - "9090:8080"
     depends_on:
