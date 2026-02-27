@@ -1,33 +1,46 @@
 version: "3.8"
 
 services:
-
   mot-postgres:
     image: postgres:15
     container_name: mot-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: mot_db
       POSTGRES_USER: mot_admin
       POSTGRES_PASSWORD: "0000"
-
     ports:
       - "5432:5432"
     volumes:
       - mot-db-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-  account-service:
+
+  product-service:
     build:
-      context: ./account-service
-    container_name: account-service
+      context: ./product-service
+    container_name: product-service
     ports:
-      - "9090:8080"
+      - "8082:8080"
     depends_on:
       - mot-postgres
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://mot-postgres:5432/mot_db
+      SPRING_DATASOURCE_URL: jdbc:postgresql://mot-postgres:5432/product_db
       SPRING_DATASOURCE_USERNAME: mot_admin
       SPRING_DATASOURCE_PASSWORD: "0000"
       SPRING_PROFILES_ACTIVE: docker
+#  craw-service:
+#    build:
+#      context: ./craw-service
+#    container_name: craw-service
+#    ports:
+#      - "8083:8080"
+#    depends_on:
+#      - mot-postgres
+#    environment:
+#      SPRING_DATASOURCE_URL: jdbc:postgresql://mot-postgres:5432/craw_db
+#      SPRING_DATASOURCE_USERNAME: mot_admin
+#      SPRING_DATASOURCE_PASSWORD: "0000"
+#      SPRING_PROFILES_ACTIVE: docker
 
 volumes:
   mot-db-data:

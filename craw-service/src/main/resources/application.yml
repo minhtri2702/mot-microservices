@@ -1,0 +1,3 @@
+spring:
+  profiles:
+    active: local   # đổi thành docker khi chạy bằng docker

@@ -1,10 +1,10 @@
-package com.mot.productservices;
+package com.mot.crawservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class ProductServicesApplicationTests {
+class CrawServiceApplicationTests {
 
     @Test
     void contextLoads() {

@@ -1,0 +1,3 @@
+CREATE DATABASE account_db;
+CREATE DATABASE product_db;
+CREATE DATABASE craw_db;

@@ -5,6 +5,7 @@ import com.mot.exception.Model.ApiError;
 import com.mot.exception.UnauthorizedException;
 import com.mot.exception.UnprocessableEntityException;
 import com.mot.response.BaseResponse;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,15 +24,15 @@ public class ApiExceptionHandler {
         return new BaseResponse(false, apiError, "An error occurred");
     }
     @ExceptionHandler(MasterDataIsNotFound.class)
-    @ResponseStatus(HttpStatus.FOUND)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
     public BaseResponse handleMasterDataIsNotFound(MasterDataIsNotFound ex, WebRequest request) {
         log.error(ex.getMessage());
-        HttpStatus httpStatus = HttpStatus.FOUND;
+        HttpStatus httpStatus = HttpStatus.NOT_FOUND;
         ApiError apiError = new ApiError(httpStatus.value() , ex.getMessage());
         return new BaseResponse(false, apiError, "Master data is not found");
     }
     @ExceptionHandler(UnauthorizedException.class)
-    @ResponseStatus(HttpStatus.FOUND)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public BaseResponse handleUnauthorized(UnauthorizedException ex, WebRequest request) {
         log.error(ex.getMessage());
         HttpStatus httpStatus = HttpStatus.UNAUTHORIZED;
