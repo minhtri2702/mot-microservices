@@ -1,4 +1,4 @@
-package com.mot.crawlerservices.Entity;
+package com.mot.crawlerservices.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

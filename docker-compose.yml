@@ -14,6 +14,17 @@ services:
     volumes:
       - mot-db-data:/var/lib/postgresql/data
 
+  crawler-postgres:
+    image: postgres:15
+    container_name: crawler-postgres
+    environment:
+      POSTGRES_DB: crawler_db
+      POSTGRES_USER: crawler_admin
+      POSTGRES_PASSWORD: "0000"
+    ports:
+      - "5433:5432"
+    volumes:
+      - crawler-db-data:/var/lib/postgresql/data
   auth-service:
     build:
       context: ./auth-service
@@ -30,4 +41,5 @@ services:
 
 volumes:
   mot-db-data:
+  crawler-db-data:
 
