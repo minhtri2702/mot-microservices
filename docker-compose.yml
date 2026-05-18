@@ -1,10 +1,25 @@
-version: "3.8"
+# ============================================
+# Docker Compose cho toàn bộ hệ thống MOT
+# ============================================
+# Cách dùng:
+#   docker compose up -d                    # Khởi động tất cả
+#   docker compose up -d mot-postgres       # Chỉ khởi động mot_db
+#   docker compose up -d crawler            # Chỉ khởi động crawler (cần DB + MinIO trước)
+#   docker compose down                     # Dừng tất cả
+#   docker compose down -v                  # Dừng + xoá volumes (mất dữ liệu)
+# ============================================
 
 services:
 
+  # ============================================
+  # 1. Product Database (mot_db)
+  # Dành cho: product-services (Spring Boot)
+  # Port: 5432
+  # ============================================
   mot-postgres:
     image: postgres:15
     container_name: mot-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: mot_db
       POSTGRES_USER: mot_admin
@@ -12,11 +27,26 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - mot-db-data:/var/lib/postgresql/data
+      - mot-postgres-data:/var/lib/postgresql/data
+      - ./mot.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mot_admin -d mot_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mot-network
 
+  # ============================================
+  # 2. Crawler Database (crawler_db)
+  # Dành cho: crawler-services (Spring Boot) + Python crawler
+  # Port: 5433
+  # ============================================
   crawler-postgres:
     image: postgres:15
     container_name: crawler-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: crawler_db
       POSTGRES_USER: crawler_admin
@@ -24,22 +54,133 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - crawler-db-data:/var/lib/postgresql/data
-  auth-service:
-    build:
-      context: ./auth-service
-    container_name: auth-service
+      - crawler-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crawler_admin -d crawler_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mot-network
+
+  # ============================================
+  # 3. MinIO - Object Storage cho ảnh
+  # Port: 9000 (API), 9001 (Console)
+  # ============================================
+  minio:
+    image: minio/minio:latest
+    container_name: mot-minio
+    restart: unless-stopped
     ports:
-      - "9090:8080"
-    depends_on:
-      - mot-postgres
+      - "9000:9000"   # S3-compatible API
+      - "9001:9001"   # Web Console
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://mot-postgres:5432/mot_db
-      SPRING_DATASOURCE_USERNAME: mot_admin
-      SPRING_DATASOURCE_PASSWORD: "0000"
-      SPRING_PROFILES_ACTIVE: docker
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mot-network
 
+  # ============================================
+  # 4. MinIO Init - Tạo bucket mặc định
+  # Chạy 1 lần, tự động thoát sau khi hoàn thành
+  # ============================================
+  minio-init:
+    image: minio/mc:latest
+    container_name: mot-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      sleep 2 &&
+      mc alias set myminio http://minio:9000 minioadmin minioadmin &&
+      mc mb myminio/manga-images --ignore-existing &&
+      mc policy set public myminio/manga-images &&
+      echo '✅ Bucket manga-images created and set to public' &&
+      exit 0
+      "
+    networks:
+      - mot-network
+
+  # ============================================
+  # 5. Python Crawler Service
+  # Build từ project crawl
+  # ============================================
+  crawler:
+    build:
+      context: /home/minh-tri/Desktop/crawl
+      dockerfile: Dockerfile
+    image: manga-crawler:latest
+    container_name: manga-crawler
+    restart: unless-stopped
+    depends_on:
+      crawler-postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      # Database Configuration
+      DB_HOST: crawler-postgres
+      DB_PORT: "5432"
+      DB_NAME: crawler_db
+      DB_USER: crawler_admin
+      DB_PASSWORD: "0000"
+      # Crawler Configuration
+      CRAWLER_BASE_URL: https://truyenqqno.com
+      CRAWLER_START_PAGE: "1"
+      CRAWLER_MAX_PAGES: "5"
+      CRAWLER_HEADLESS: "true"
+      CRAWLER_PAGE_LOAD_TIMEOUT: "30"
+      CRAWLER_RETRY_MAX_ATTEMPTS: "3"
+      CRAWLER_RETRY_DELAY: "5"
+      # MinIO Configuration
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: manga-images
+      MINIO_PUBLIC_URL: http://localhost:9000
+      # Image Configuration
+      IMAGE_SAVE_PATH: ./data/images
+      # Logging Configuration
+      LOG_LEVEL: INFO
+      LOG_FILE: ./logs/crawler.log
+    volumes:
+      - crawler-data:/app/data
+      - crawler-logs:/app/logs
+    command: ["python", "main.py", "--mode", "scheduled"]
+    networks:
+      - mot-network
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  mot-network:
+    name: mot-network
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
 volumes:
-  mot-db-data:
-  crawler-db-data:
-
+  mot-postgres-data:
+    name: mot-postgres-data
+  crawler-postgres-data:
+    name: crawler-postgres-data
+  minio-data:
+    name: crawler-minio-data
+    external: true
+  crawler-data:
+    name: crawler-app-data
+  crawler-logs:
+    name: crawler-app-logs

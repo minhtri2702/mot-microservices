@@ -27,8 +27,7 @@
 
     <modules>
         <module>commons</module>
-<!--        <module>auth-service</module>-->
-        <module>account-service</module>
+        <module>product-services</module>
     </modules>
 
     <properties>
