@@ -15,7 +15,8 @@ public interface ChapterRepository extends JpaRepository<Chapter, Integer> {
 
     List<Chapter> findByMangaIdOrderByChapterNumberDesc(UUID mangaId);
 
-    Optional<Chapter> findByIdAndMangaId(Integer id, UUID mangaId);
+    @Query("SELECT c FROM Chapter c LEFT JOIN FETCH c.images WHERE c.id = :id AND c.manga.id = :mangaId")
+    Optional<Chapter> findByIdAndMangaIdWithImages(@Param("id") Integer id, @Param("mangaId") UUID mangaId);
 
     Optional<Chapter> findByUrl(String url);
 

@@ -113,4 +113,14 @@ public class MangaController {
         PagedResponseDTO<MangaSummaryDTO> result = mangaService.getRelatedManga(id, page, size);
         return ResponseEntity.ok(BaseResponse.<PagedResponseDTO<MangaSummaryDTO>>ok(result));
     }
+
+    // ==================== Reading History ====================
+
+    @GetMapping("/user/{userId}/reading-history")
+    public ResponseEntity<BaseResponse<List<ReadingHistoryDTO>>> getReadingHistory(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "10") int limit) {
+        List<ReadingHistoryDTO> result = mangaService.getReadingHistory(userId, limit);
+        return ResponseEntity.ok(BaseResponse.<List<ReadingHistoryDTO>>ok(result));
+    }
 }

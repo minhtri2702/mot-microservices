@@ -3,17 +3,29 @@ package com.mot.productservices.repository;
 import com.mot.productservices.entity.Manga;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Repository
 public interface MangaRepository extends JpaRepository<Manga, UUID> {
+
+    @EntityGraph(attributePaths = {"genres"})
+    @Query("SELECT m FROM Manga m WHERE m.id = :id")
+    Optional<Manga> findByIdWithGenres(@Param("id") UUID id);
+
+    @Modifying
+    @Query("UPDATE Manga m SET m.views = m.views + 1 WHERE m.id = :id")
+    void incrementViewCount(@Param("id") UUID id);
 
     Optional<Manga> findByUrl(String url);
 
@@ -35,8 +47,21 @@ public interface MangaRepository extends JpaRepository<Manga, UUID> {
     // Completed manga
     Page<Manga> findByStatus(String status, Pageable pageable);
 
-    // Featured manga (top views)
-    List<Manga> findTop6ByOrderByViewsDesc();
+    // Featured manga (top views) - first get IDs with limit, then fetch with genres
+    @Query("SELECT m.id FROM Manga m ORDER BY m.views DESC")
+    List<UUID> findTopMangaIds(Pageable pageable);
+    
+    @EntityGraph(attributePaths = {"genres"})
+    @Query("SELECT m FROM Manga m WHERE m.id IN :ids ORDER BY m.views DESC")
+    List<Manga> findMangaByIdsWithGenres(@Param("ids") List<UUID> ids);
+    
+    // Batch query: get latest chapter number + updated_at for multiple manga IDs
+    // Uses a single efficient query with DISTINCT ON
+    @Query(value = "SELECT c.manga_id, c.chapter_number, CAST(c.updated_at AS VARCHAR) FROM chapter c " +
+           "WHERE c.manga_id IN :ids " +
+           "AND (c.manga_id, c.chapter_number) IN " +
+           "(SELECT c2.manga_id, MAX(c2.chapter_number) FROM chapter c2 WHERE c2.manga_id IN :ids GROUP BY c2.manga_id)", nativeQuery = true)
+    List<Object[]> findLatestChaptersBatch(@Param("ids") List<UUID> ids);
 
     // Manga by genre
     @Query("SELECT m FROM Manga m JOIN m.genres g WHERE g.id = :genreId ORDER BY m.updatedAt DESC")

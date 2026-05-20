@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS chapter (
 );
 
 CREATE INDEX IF NOT EXISTS ix_chapter_manga_id ON chapter(manga_id);
+CREATE INDEX IF NOT EXISTS ix_chapter_manga_id_chapter_number ON chapter(manga_id, chapter_number DESC);
 CREATE INDEX IF NOT EXISTS ix_chapter_url ON chapter(url);
 
 COMMENT ON TABLE chapter IS 'Bảng chương truyện - đồng bộ từ crawler DB';

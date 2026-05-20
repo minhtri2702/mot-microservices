@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -25,6 +26,24 @@ public class MinioService {
 
     @Value("${minio.endpoint}")
     private String endpoint;
+
+    // Cache presigned URLs for 50 minutes (URLs expire in 1 hour)
+    private final ConcurrentHashMap<String, CacheEntry> presignedUrlCache = new ConcurrentHashMap<>();
+    private static final long CACHE_DURATION_MS = 50 * 60 * 1000L;
+
+    private static class CacheEntry {
+        final String url;
+        final long createdAt;
+
+        CacheEntry(String url) {
+            this.url = url;
+            this.createdAt = System.currentTimeMillis();
+        }
+
+        boolean isValid() {
+            return System.currentTimeMillis() - createdAt < CACHE_DURATION_MS;
+        }
+    }
 
     /**
      * Get an object from MinIO as InputStream.
@@ -51,10 +70,19 @@ public class MinioService {
      * Get a presigned URL for direct access to an object in MinIO.
      * The URL is valid for the specified duration (default 1 hour).
      * Frontend can use this URL to load images directly from MinIO.
+     * Results are cached for 50 minutes to avoid repeated MinIO API calls.
      */
     public String getPresignedUrl(String objectPath) {
+        if (objectPath == null) return null;
+
+        // Check cache first
+        CacheEntry cached = presignedUrlCache.get(objectPath);
+        if (cached != null && cached.isValid()) {
+            return cached.url;
+        }
+
         try {
-            return minioClient.getPresignedObjectUrl(
+            String url = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
                             .bucket(bucket)
@@ -62,6 +90,9 @@ public class MinioService {
                             .expiry(1, TimeUnit.HOURS)
                             .build()
             );
+            // Cache the result
+            presignedUrlCache.put(objectPath, new CacheEntry(url));
+            return url;
         } catch (Exception e) {
             log.error("Error generating presigned URL for {}: {}", objectPath, e.getMessage());
             // Fallback to public URL
