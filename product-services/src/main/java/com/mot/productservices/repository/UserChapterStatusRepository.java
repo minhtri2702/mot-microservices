@@ -8,7 +8,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.UUID;
 
 @Repository
 public interface UserChapterStatusRepository extends JpaRepository<UserChapterStatus, UserChapterStatusId> {
@@ -24,5 +23,5 @@ public interface UserChapterStatusRepository extends JpaRepository<UserChapterSt
         ORDER BY ucs.last_read_date DESC
         LIMIT :limit
     """, nativeQuery = true)
-    List<Object[]> findReadingHistory(@Param("userId") UUID userId, @Param("limit") int limit);
+    List<Object[]> findReadingHistory(@Param("userId") String userId, @Param("limit") int limit);
 }

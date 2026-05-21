@@ -31,9 +31,28 @@ public interface MangaRepository extends JpaRepository<Manga, UUID> {
 
     Optional<Manga> findByStt(Integer stt);
 
-    // Search by title (case-insensitive)
+    // Search by title (case-insensitive) - fallback
     @Query("SELECT m FROM Manga m WHERE LOWER(m.title) LIKE LOWER(CONCAT('%', :keyword, '%'))")
     Page<Manga> searchByTitle(@Param("keyword") String keyword, Pageable pageable);
+
+    // Full-Text Search using PostgreSQL tsvector
+    // Search across title (weight A), alternative_titles (weight B), author (weight C)
+    // Sorted by relevance (ts_rank) then views
+    @Query(value = "SELECT m.* FROM manga m " +
+           "WHERE m.search_vector @@ plainto_tsquery('simple', :keyword) " +
+           "ORDER BY ts_rank(m.search_vector, plainto_tsquery('simple', :keyword)) DESC, m.views DESC",
+           countQuery = "SELECT COUNT(*) FROM manga m WHERE m.search_vector @@ plainto_tsquery('simple', :keyword)",
+           nativeQuery = true)
+    Page<Manga> searchByFullText(@Param("keyword") String keyword, Pageable pageable);
+
+    // Fuzzy search fallback using trigram similarity (cho lỗi chính tả)
+    @Query(value = "SELECT m.*, similarity(m.title, :keyword) AS sim " +
+           "FROM manga m " +
+           "WHERE m.title % :keyword OR m.author % :keyword " +
+           "ORDER BY sim DESC, m.views DESC",
+           countQuery = "SELECT COUNT(*) FROM manga m WHERE m.title % :keyword OR m.author % :keyword",
+           nativeQuery = true)
+    Page<Manga> searchByFuzzy(@Param("keyword") String keyword, Pageable pageable);
 
     // Latest updated manga
     Page<Manga> findAllByOrderByUpdatedAtDesc(Pageable pageable);

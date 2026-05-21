@@ -19,4 +19,6 @@ public class ChapterDetailDTO {
     private String createdAt;
     private List<String> imageUrls;
     private ChapterNavigationDTO navigation;
+    private String mangaTitle;
+    private String mangaId;
 }

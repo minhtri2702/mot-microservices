@@ -5,15 +5,18 @@ import com.mot.productservices.entity.Chapter;
 import com.mot.productservices.entity.ChapterImage;
 import com.mot.productservices.entity.Genre;
 import com.mot.productservices.entity.Manga;
+import com.mot.productservices.entity.UserFavorite;
 import com.mot.productservices.repository.ChapterRepository;
 import com.mot.productservices.repository.GenreRepository;
 import com.mot.productservices.repository.MangaRepository;
 import com.mot.productservices.repository.UserChapterStatusRepository;
+import com.mot.productservices.repository.UserFavoriteRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,11 +34,13 @@ public class MangaService {
     private final GenreRepository genreRepository;
     private final MinioService minioService;
     private final UserChapterStatusRepository userChapterStatusRepository;
+    private final UserFavoriteRepository userFavoriteRepository;
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     // ==================== Manga Listing ====================
 
+    @Cacheable(value = "mangaListings", key = "'featured'")
     @Transactional(readOnly = true)
     public List<MangaSummaryDTO> getFeaturedManga() {
         // Step 1: Get only IDs with LIMIT (efficient single-column query)
@@ -47,6 +52,7 @@ public class MangaService {
         return toSummaryDTOs(mangas);
     }
 
+    @Cacheable(value = "mangaListings", key = "'latest:' + #page + ':' + #size")
     @Transactional(readOnly = true)
     public PagedResponseDTO<MangaSummaryDTO> getLatestUpdated(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -54,6 +60,7 @@ public class MangaService {
         return toPagedResponse(mangaPage);
     }
 
+    @Cacheable(value = "mangaListings", key = "'hot:' + #page + ':' + #size")
     @Transactional(readOnly = true)
     public PagedResponseDTO<MangaSummaryDTO> getHotManga(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -61,6 +68,7 @@ public class MangaService {
         return toPagedResponse(mangaPage);
     }
 
+    @Cacheable(value = "mangaListings", key = "'new:' + #page + ':' + #size")
     @Transactional(readOnly = true)
     public PagedResponseDTO<MangaSummaryDTO> getNewManga(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -68,6 +76,7 @@ public class MangaService {
         return toPagedResponse(mangaPage);
     }
 
+    @Cacheable(value = "mangaListings", key = "'completed:' + #page + ':' + #size")
     @Transactional(readOnly = true)
     public PagedResponseDTO<MangaSummaryDTO> getCompletedManga(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -77,7 +86,8 @@ public class MangaService {
 
     // ==================== Manga Detail ====================
 
-    @Transactional
+    @Cacheable(value = "mangaDetail", key = "#id")
+    @Transactional(readOnly = true)
     public MangaDetailDTO getMangaDetail(UUID id) {
         // Fetch manga with genres in 1 query
         Manga manga = mangaRepository.findByIdWithGenres(id)
@@ -86,10 +96,12 @@ public class MangaService {
         // Fetch chapters in a separate query (avoids Cartesian product with genres)
         List<Chapter> chapters = chapterRepository.findByMangaIdOrderByChapterNumberDesc(id);
 
-        // Increment view count with a single UPDATE query (no need to load + save entity)
-        mangaRepository.incrementViewCount(id);
-
         return toDetailDTO(manga, chapters);
+    }
+
+    @Transactional
+    public void incrementMangaView(UUID id) {
+        mangaRepository.incrementViewCount(id);
     }
 
     // ==================== Chapter ====================
@@ -116,6 +128,11 @@ public class MangaService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
+        // Get manga title
+        String mangaTitle = mangaRepository.findById(mangaId)
+                .map(Manga::getTitle)
+                .orElse("");
+
         return ChapterDetailDTO.builder()
                 .id(chapter.getId())
                 .chapterNumber(chapter.getChapterNumber())
@@ -124,6 +141,8 @@ public class MangaService {
                 .createdAt(chapter.getCreatedAt() != null ? chapter.getCreatedAt().format(DTF) : null)
                 .imageUrls(imageUrls)
                 .navigation(navigation)
+                .mangaTitle(mangaTitle)
+                .mangaId(mangaId.toString())
                 .build();
     }
 
@@ -144,9 +163,28 @@ public class MangaService {
 
     // ==================== Search ====================
 
+    @Transactional(readOnly = true)
     public PagedResponseDTO<MangaSummaryDTO> searchManga(String keyword, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<Manga> mangaPage = mangaRepository.searchByTitle(keyword, pageable);
+        Page<Manga> mangaPage;
+
+        try {
+            // Try full-text search first (nhanh, chính xác)
+            mangaPage = mangaRepository.searchByFullText(keyword, pageable);
+        } catch (Exception e) {
+            log.warn("Full-text search failed, falling back to LIKE search: {}", e.getMessage());
+            mangaPage = mangaRepository.searchByTitle(keyword, pageable);
+        }
+
+        // Nếu full-text không có kết quả, thử fuzzy search (sửa lỗi chính tả)
+        if (mangaPage.isEmpty() && keyword.length() >= 3) {
+            try {
+                mangaPage = mangaRepository.searchByFuzzy(keyword, pageable);
+            } catch (Exception e) {
+                log.warn("Fuzzy search failed: {}", e.getMessage());
+            }
+        }
+
         return toPagedResponse(mangaPage);
     }
 
@@ -182,7 +220,7 @@ public class MangaService {
     // ==================== Reading History ====================
 
     @Transactional(readOnly = true)
-    public List<ReadingHistoryDTO> getReadingHistory(UUID userId, int limit) {
+    public List<ReadingHistoryDTO> getReadingHistory(String userId, int limit) {
         List<Object[]> rows = userChapterStatusRepository.findReadingHistory(userId, limit);
         if (rows.isEmpty()) return Collections.emptyList();
 
@@ -223,7 +261,90 @@ public class MangaService {
         }).collect(Collectors.toList());
     }
 
+    // ==================== Favorites ====================
+
+    @Transactional
+    public void addFavorite(String userId, UUID mangaId) {
+        if (userFavoriteRepository.existsByUserIdAndMangaId(userId, mangaId)) {
+            return; // Already favorited
+        }
+        UserFavorite favorite = UserFavorite.builder()
+                .userId(userId)
+                .mangaId(mangaId)
+                .build();
+        userFavoriteRepository.save(favorite);
+        userFavoriteRepository.incrementFollowerCount(mangaId);
+    }
+
+    @Transactional
+    public void removeFavorite(String userId, UUID mangaId) {
+        if (!userFavoriteRepository.existsByUserIdAndMangaId(userId, mangaId)) {
+            return; // Not favorited
+        }
+        userFavoriteRepository.deleteByUserIdAndMangaId(userId, mangaId);
+        userFavoriteRepository.decrementFollowerCount(mangaId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isFavorite(String userId, UUID mangaId) {
+        return userFavoriteRepository.existsByUserIdAndMangaId(userId, mangaId);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponseDTO<FavoriteDTO> getFavorites(String userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Object[]> rows = userFavoriteRepository.findFavoritesByUserId(userId, pageable);
+
+        List<FavoriteDTO> content = rows.getContent().stream().map(row -> {
+            UUID mangaId = (UUID) row[0];
+            Integer stt = row[1] != null ? ((Number) row[1]).intValue() : null;
+            String title = (String) row[2];
+            String coverPath = (String) row[3];
+            String author = (String) row[4];
+            String status = (String) row[5];
+            Long views = row[6] != null ? ((Number) row[6]).longValue() : 0L;
+            Long likes = row[7] != null ? ((Number) row[7]).longValue() : 0L;
+            Long followers = row[8] != null ? ((Number) row[8]).longValue() : 0L;
+            Integer maxChapter = row[9] != null ? ((Number) row[9]).intValue() : null;
+            Object updatedAtObj = row[10];
+
+            String coverUrl = coverPath != null ? minioService.getPresignedUrl(coverPath) : null;
+
+            String latestChapterUpdatedAt = null;
+            if (updatedAtObj instanceof java.sql.Timestamp) {
+                latestChapterUpdatedAt = ((java.sql.Timestamp) updatedAtObj).toLocalDateTime().format(DTF);
+            } else if (updatedAtObj instanceof java.time.LocalDateTime) {
+                latestChapterUpdatedAt = ((java.time.LocalDateTime) updatedAtObj).format(DTF);
+            }
+
+            return FavoriteDTO.builder()
+                    .mangaId(mangaId.toString())
+                    .stt(stt)
+                    .title(title)
+                    .coverImagePath(coverUrl)
+                    .author(author)
+                    .status(status)
+                    .views(views)
+                    .likes(likes)
+                    .followers(followers)
+                    .latestChapter(maxChapter != null ? maxChapter.doubleValue() : null)
+                    .latestChapterUpdatedAt(latestChapterUpdatedAt)
+                    .build();
+        }).collect(Collectors.toList());
+
+        return PagedResponseDTO.<FavoriteDTO>builder()
+                .content(content)
+                .page(rows.getNumber())
+                .size(rows.getSize())
+                .totalElements(rows.getTotalElements())
+                .totalPages(rows.getTotalPages())
+                .last(rows.isLast())
+                .first(rows.isFirst())
+                .build();
+    }
+
     // ==================== Batch Mappers (N+1 fix) ====================
+
 
     /**
      * Batch convert list of Manga to SummaryDTOs using data from manga table directly

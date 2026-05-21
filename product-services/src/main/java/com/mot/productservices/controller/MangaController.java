@@ -61,7 +61,10 @@ public class MangaController {
 
     @GetMapping("/manga/{id}")
     public ResponseEntity<BaseResponse<MangaDetailDTO>> getMangaDetail(@PathVariable UUID id) {
+        // Lấy dữ liệu từ cache (manga info + chapters)
         MangaDetailDTO result = mangaService.getMangaDetail(id);
+        // Increment view count realtime (không cache)
+        mangaService.incrementMangaView(id);
         return ResponseEntity.ok(BaseResponse.<MangaDetailDTO>ok(result));
     }
 
@@ -118,9 +121,44 @@ public class MangaController {
 
     @GetMapping("/user/{userId}/reading-history")
     public ResponseEntity<BaseResponse<List<ReadingHistoryDTO>>> getReadingHistory(
-            @PathVariable UUID userId,
+            @PathVariable String userId,
             @RequestParam(defaultValue = "10") int limit) {
         List<ReadingHistoryDTO> result = mangaService.getReadingHistory(userId, limit);
         return ResponseEntity.ok(BaseResponse.<List<ReadingHistoryDTO>>ok(result));
+    }
+
+    // ==================== Favorites ====================
+
+    @PostMapping("/user/{userId}/favorites/{mangaId}")
+    public ResponseEntity<BaseResponse<Void>> addFavorite(
+            @PathVariable String userId,
+            @PathVariable UUID mangaId) {
+        mangaService.addFavorite(userId, mangaId);
+        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+    }
+
+    @DeleteMapping("/user/{userId}/favorites/{mangaId}")
+    public ResponseEntity<BaseResponse<Void>> removeFavorite(
+            @PathVariable String userId,
+            @PathVariable UUID mangaId) {
+        mangaService.removeFavorite(userId, mangaId);
+        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+    }
+
+    @GetMapping("/user/{userId}/favorites/{mangaId}/check")
+    public ResponseEntity<BaseResponse<Boolean>> isFavorite(
+            @PathVariable String userId,
+            @PathVariable UUID mangaId) {
+        boolean result = mangaService.isFavorite(userId, mangaId);
+        return ResponseEntity.ok(BaseResponse.<Boolean>ok(result));
+    }
+
+    @GetMapping("/user/{userId}/favorites")
+    public ResponseEntity<BaseResponse<PagedResponseDTO<FavoriteDTO>>> getFavorites(
+            @PathVariable String userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        PagedResponseDTO<FavoriteDTO> result = mangaService.getFavorites(userId, page, size);
+        return ResponseEntity.ok(BaseResponse.<PagedResponseDTO<FavoriteDTO>>ok(result));
     }
 }

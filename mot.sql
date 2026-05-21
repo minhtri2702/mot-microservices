@@ -18,6 +18,9 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable pg_trgm extension for fuzzy search (similarity)
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
 -- ============================================
 -- 1. CRAWL DATA - Đồng bộ từ crawler DB
 -- ============================================
@@ -50,6 +53,38 @@ CREATE TABLE IF NOT EXISTS manga (
 CREATE INDEX IF NOT EXISTS ix_manga_title ON manga(title);
 CREATE INDEX IF NOT EXISTS ix_manga_url ON manga(url);
 CREATE INDEX IF NOT EXISTS ix_manga_stt ON manga(stt);
+
+-- Full-Text Search support
+ALTER TABLE manga ADD COLUMN IF NOT EXISTS search_vector tsvector;
+
+-- Hàm cập nhật search_vector tự động
+CREATE OR REPLACE FUNCTION manga_search_vector_update() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector('simple', coalesce(NEW.title, '')), 'A') ||
+        setweight(to_tsvector('simple', coalesce(NEW.alternative_titles, '')), 'B') ||
+        setweight(to_tsvector('simple', coalesce(NEW.author, '')), 'C');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger tự động cập nhật search_vector khi insert/update manga
+DROP TRIGGER IF EXISTS trg_manga_search_vector ON manga;
+CREATE TRIGGER trg_manga_search_vector
+    BEFORE INSERT OR UPDATE OF title, alternative_titles, author
+    ON manga
+    FOR EACH ROW
+    EXECUTE FUNCTION manga_search_vector_update();
+
+-- GIN index cho full-text search
+CREATE INDEX IF NOT EXISTS ix_manga_search_vector ON manga USING GIN(search_vector);
+
+-- Cập nhật search_vector cho dữ liệu hiện có
+UPDATE manga SET search_vector =
+    setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
+    setweight(to_tsvector('simple', coalesce(alternative_titles, '')), 'B') ||
+    setweight(to_tsvector('simple', coalesce(author, '')), 'C')
+WHERE search_vector IS NULL;
 
 COMMENT ON TABLE manga IS 'Bảng truyện - đồng bộ từ crawler DB';
 
