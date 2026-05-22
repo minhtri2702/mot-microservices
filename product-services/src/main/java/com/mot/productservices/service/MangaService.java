@@ -1,16 +1,8 @@
 package com.mot.productservices.service;
 
 import com.mot.productservices.dto.*;
-import com.mot.productservices.entity.Chapter;
-import com.mot.productservices.entity.ChapterImage;
-import com.mot.productservices.entity.Genre;
-import com.mot.productservices.entity.Manga;
-import com.mot.productservices.entity.UserFavorite;
-import com.mot.productservices.repository.ChapterRepository;
-import com.mot.productservices.repository.GenreRepository;
-import com.mot.productservices.repository.MangaRepository;
-import com.mot.productservices.repository.UserChapterStatusRepository;
-import com.mot.productservices.repository.UserFavoriteRepository;
+import com.mot.productservices.entity.*;
+import com.mot.productservices.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -35,6 +27,8 @@ public class MangaService {
     private final MinioService minioService;
     private final UserChapterStatusRepository userChapterStatusRepository;
     private final UserFavoriteRepository userFavoriteRepository;
+    private final CommentRepository commentRepository;
+    private final CommentLikeRepository commentLikeRepository;
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
@@ -221,7 +215,8 @@ public class MangaService {
 
     @Transactional(readOnly = true)
     public List<ReadingHistoryDTO> getReadingHistory(String userId, int limit) {
-        List<Object[]> rows = userChapterStatusRepository.findReadingHistory(userId, limit);
+        UUID userUuid = UUID.fromString(userId);
+        List<Object[]> rows = userChapterStatusRepository.findReadingHistory(userUuid, limit);
         if (rows.isEmpty()) return Collections.emptyList();
 
         return rows.stream().map(row -> {
@@ -451,6 +446,130 @@ public class MangaService {
                 .totalPages(page.getTotalPages())
                 .last(page.isLast())
                 .first(page.isFirst())
+                .build();
+    }
+
+    // ==================== Comments ====================
+
+    @Transactional(readOnly = true)
+    public PagedResponseDTO<CommentDTO> getComments(UUID mangaId, int page, int size, String currentUserId) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Comment> commentPage = commentRepository.findByMangaIdAndParentCommentIdIsNullAndIsDeletedFalseOrderByCreatedAtDesc(
+                mangaId, pageable);
+
+        List<CommentDTO> content = commentPage.getContent().stream()
+                .map(c -> toCommentDTO(c, currentUserId))
+                .collect(Collectors.toList());
+
+        return PagedResponseDTO.<CommentDTO>builder()
+                .content(content)
+                .page(commentPage.getNumber())
+                .size(commentPage.getSize())
+                .totalElements(commentPage.getTotalElements())
+                .totalPages(commentPage.getTotalPages())
+                .last(commentPage.isLast())
+                .first(commentPage.isFirst())
+                .build();
+    }
+
+    @Transactional
+    public CommentDTO addComment(UUID mangaId, String userId, String username, String avatarUrl, CommentRequest request) {
+        UUID userUuid = UUID.fromString(userId);
+        Comment comment = Comment.builder()
+                .mangaId(mangaId)
+                .userId(userUuid)
+                .username(username)
+                .avatarUrl(avatarUrl)
+                .commentText(request.getContent())
+                .build();
+
+        if (request.getParentCommentId() != null && !request.getParentCommentId().isEmpty()) {
+            UUID parentUuid = UUID.fromString(request.getParentCommentId());
+            comment.setParentCommentId(parentUuid);
+            // Increment reply count on parent
+            commentRepository.incrementReplyCount(parentUuid);
+        }
+
+        comment = commentRepository.save(comment);
+        return toCommentDTO(comment, userId);
+    }
+
+    @Transactional
+    public CommentDTO updateComment(UUID commentId, String userId, String content) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new NoSuchElementException("Comment not found"));
+
+        if (!comment.getUserId().equals(UUID.fromString(userId))) {
+            throw new SecurityException("You can only edit your own comments");
+        }
+
+        comment.setCommentText(content);
+        comment = commentRepository.save(comment);
+        return toCommentDTO(comment, userId);
+    }
+
+    @Transactional
+    public void deleteComment(UUID commentId, String userId) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new NoSuchElementException("Comment not found"));
+
+        if (!comment.getUserId().equals(UUID.fromString(userId))) {
+            throw new SecurityException("You can only delete your own comments");
+        }
+
+        comment.setDeleted(true);
+        commentRepository.save(comment);
+    }
+
+    @Transactional
+    public void toggleLikeComment(UUID commentId, String userId) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new NoSuchElementException("Comment not found"));
+
+        UUID userUuid = UUID.fromString(userId);
+        var existingLike = commentLikeRepository.findByCommentIdAndUserId(commentId, userUuid);
+        if (existingLike.isPresent()) {
+            commentLikeRepository.delete(existingLike.get());
+            commentRepository.decrementLikeCount(commentId);
+        } else {
+            CommentLike like = CommentLike.builder()
+                    .commentId(commentId)
+                    .userId(userUuid)
+                    .build();
+            commentLikeRepository.save(like);
+            commentRepository.incrementLikeCount(commentId);
+        }
+    }
+
+    private CommentDTO toCommentDTO(Comment comment, String currentUserId) {
+        UUID currentUserUuid = currentUserId != null ? UUID.fromString(currentUserId) : null;
+        boolean isLiked = currentUserUuid != null &&
+                commentLikeRepository.existsByCommentIdAndUserId(comment.getId(), currentUserUuid);
+
+        List<CommentDTO> replies = null;
+        if (comment.getParentCommentId() == null) {
+            // Only fetch replies for root comments
+            List<Comment> replyEntities = commentRepository.findByParentCommentIdAndIsDeletedFalseOrderByCreatedAtAsc(comment.getId());
+            replies = replyEntities.stream()
+                    .map(r -> toCommentDTO(r, currentUserId))
+                    .collect(Collectors.toList());
+        }
+
+        return CommentDTO.builder()
+                .id(comment.getId() != null ? comment.getId().toString() : null)
+                .mangaId(comment.getMangaId() != null ? comment.getMangaId().toString() : null)
+                .chapterId(comment.getChapterId())
+                .userId(comment.getUserId().toString())
+                .username(comment.getUsername() != null ? comment.getUsername() : comment.getUserId().toString())
+                .avatarUrl(comment.getAvatarUrl())
+                .parentCommentId(comment.getParentCommentId() != null ? comment.getParentCommentId().toString() : null)
+                .content(comment.isDeleted() ? "[Đã xoá]" : comment.getCommentText())
+                .likeCount(comment.getLikeCount())
+                .replyCount(comment.getReplyCount())
+                .isLiked(isLiked)
+                .createdAt(comment.getCreatedAt() != null ? comment.getCreatedAt().format(DTF) : null)
+                .updatedAt(comment.getUpdatedAt() != null ? comment.getUpdatedAt().format(DTF) : null)
+                .replies(replies)
                 .build();
     }
 }

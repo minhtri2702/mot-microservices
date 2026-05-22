@@ -161,4 +161,52 @@ public class MangaController {
         PagedResponseDTO<FavoriteDTO> result = mangaService.getFavorites(userId, page, size);
         return ResponseEntity.ok(BaseResponse.<PagedResponseDTO<FavoriteDTO>>ok(result));
     }
+
+    // ==================== Comments ====================
+
+    @GetMapping("/manga/{mangaId}/comments")
+    public ResponseEntity<BaseResponse<PagedResponseDTO<CommentDTO>>> getComments(
+            @PathVariable UUID mangaId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId) {
+        PagedResponseDTO<CommentDTO> result = mangaService.getComments(mangaId, page, size, currentUserId);
+        return ResponseEntity.ok(BaseResponse.<PagedResponseDTO<CommentDTO>>ok(result));
+    }
+
+    @PostMapping("/manga/{mangaId}/comments")
+    public ResponseEntity<BaseResponse<CommentDTO>> addComment(
+            @PathVariable UUID mangaId,
+            @RequestBody CommentRequest request,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Name") String username,
+            @RequestHeader(value = "X-User-Avatar", required = false) String avatarUrl) {
+        CommentDTO result = mangaService.addComment(mangaId, userId, username, avatarUrl, request);
+        return ResponseEntity.ok(BaseResponse.<CommentDTO>ok(result));
+    }
+
+    @PutMapping("/comments/{commentId}")
+    public ResponseEntity<BaseResponse<CommentDTO>> updateComment(
+            @PathVariable UUID commentId,
+            @RequestBody CommentRequest request,
+            @RequestHeader("X-User-Id") String userId) {
+        CommentDTO result = mangaService.updateComment(commentId, userId, request.getContent());
+        return ResponseEntity.ok(BaseResponse.<CommentDTO>ok(result));
+    }
+
+    @DeleteMapping("/comments/{commentId}")
+    public ResponseEntity<BaseResponse<Void>> deleteComment(
+            @PathVariable UUID commentId,
+            @RequestHeader("X-User-Id") String userId) {
+        mangaService.deleteComment(commentId, userId);
+        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+    }
+
+    @PostMapping("/comments/{commentId}/like")
+    public ResponseEntity<BaseResponse<Void>> toggleLikeComment(
+            @PathVariable UUID commentId,
+            @RequestHeader("X-User-Id") String userId) {
+        mangaService.toggleLikeComment(commentId, userId);
+        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+    }
 }

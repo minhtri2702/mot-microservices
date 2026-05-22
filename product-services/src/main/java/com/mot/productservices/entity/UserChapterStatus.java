@@ -3,6 +3,7 @@ package com.mot.productservices.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "user_chapter_status")
@@ -15,8 +16,8 @@ import java.time.LocalDateTime;
 public class UserChapterStatus {
 
     @Id
-    @Column(name = "user_id", nullable = false, length = 64)
-    private String userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "uuid")
+    private UUID userId;
 
     @Id
     @Column(name = "chapter_id", nullable = false)

@@ -222,6 +222,9 @@ CREATE TABLE IF NOT EXISTS comments (
     user_id UUID NOT NULL,
     parent_comment_id INTEGER REFERENCES comments(comment_id) ON DELETE CASCADE,
     comment_text TEXT NOT NULL,
+    like_count INTEGER DEFAULT 0,
+    reply_count INTEGER DEFAULT 0,
+    is_deleted BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -231,6 +234,20 @@ CREATE INDEX IF NOT EXISTS ix_comments_manga_id ON comments(manga_id);
 CREATE INDEX IF NOT EXISTS ix_comments_user_id ON comments(user_id);
 
 COMMENT ON TABLE comments IS 'Bảng bình luận';
+
+-- Comment likes table
+CREATE TABLE IF NOT EXISTS comment_likes (
+    id BIGSERIAL PRIMARY KEY,
+    comment_id INTEGER NOT NULL REFERENCES comments(comment_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (comment_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_comment_likes_comment_id ON comment_likes(comment_id);
+CREATE INDEX IF NOT EXISTS ix_comment_likes_user_id ON comment_likes(user_id);
+
+COMMENT ON TABLE comment_likes IS 'Bảng like bình luận';
 
 -- Ratings table
 CREATE TABLE IF NOT EXISTS ratings (

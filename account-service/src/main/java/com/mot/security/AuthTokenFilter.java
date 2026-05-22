@@ -32,6 +32,15 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        // Skip filter for auth endpoints
+        String path = request.getRequestURI();
+        log.info("AuthTokenFilter path: {}, method: {}", path, request.getMethod());
+        if (path.startsWith("/api/auth/")) {
+            log.info("Skipping auth filter for path: {}", path);
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         try {
             String jwt = parseJwt(request);
             if (jwt != null && jwtUtil.validateToken(jwt)) {
