@@ -67,10 +67,10 @@ public class MinioService {
     }
 
     /**
-     * Get a presigned URL for direct access to an object in MinIO.
-     * The URL is valid for the specified duration (default 1 hour).
-     * Frontend can use this URL to load images directly from MinIO.
-     * Results are cached for 50 minutes to avoid repeated MinIO API calls.
+     * Get a URL for an image via the internal image proxy.
+     * Images are served through Nginx → product-services → MinIO.
+     * This keeps MinIO internal and avoids exposing internal hostnames.
+     * Results are cached for 50 minutes.
      */
     public String getPresignedUrl(String objectPath) {
         if (objectPath == null) return null;
@@ -81,30 +81,19 @@ public class MinioService {
             return cached.url;
         }
 
-        try {
-            String url = minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Method.GET)
-                            .bucket(bucket)
-                            .object(objectPath)
-                            .expiry(1, TimeUnit.HOURS)
-                            .build()
-            );
-            // Cache the result
-            presignedUrlCache.put(objectPath, new CacheEntry(url));
-            return url;
-        } catch (Exception e) {
-            log.error("Error generating presigned URL for {}: {}", objectPath, e.getMessage());
-            // Fallback to public URL
-            return getPublicUrl(objectPath);
-        }
+        // Use image proxy URL instead of presigned MinIO URL
+        // This keeps MinIO internal and serves images through the API
+        String url = getPublicUrl(objectPath);
+        presignedUrlCache.put(objectPath, new CacheEntry(url));
+        return url;
     }
 
     /**
-     * Build public MinIO URL for an object.
-     * e.g. http://100.94.58.103:9000/manga-images/one-piece/one-piece.jpg
+     * Build public URL for an object via image proxy (through Nginx).
+     * Frontend calls: /api/v1/images/{objectPath}
+     * This keeps MinIO internal and serves images through the API proxy.
      */
     public String getPublicUrl(String objectPath) {
-        return String.format("%s/%s/%s", endpoint, bucket, objectPath);
+        return String.format("/api/v1/images/%s", objectPath);
     }
 }

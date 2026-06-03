@@ -134,7 +134,7 @@ public class MangaController {
             @PathVariable String userId,
             @PathVariable UUID mangaId) {
         mangaService.addFavorite(userId, mangaId);
-        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+        return ResponseEntity.ok(BaseResponse.<Void>ok());
     }
 
     @DeleteMapping("/user/{userId}/favorites/{mangaId}")
@@ -142,7 +142,7 @@ public class MangaController {
             @PathVariable String userId,
             @PathVariable UUID mangaId) {
         mangaService.removeFavorite(userId, mangaId);
-        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+        return ResponseEntity.ok(BaseResponse.<Void>ok());
     }
 
     @GetMapping("/user/{userId}/favorites/{mangaId}/check")
@@ -199,7 +199,7 @@ public class MangaController {
             @PathVariable UUID commentId,
             @RequestHeader("X-User-Id") String userId) {
         mangaService.deleteComment(commentId, userId);
-        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+        return ResponseEntity.ok(BaseResponse.<Void>ok());
     }
 
     @PostMapping("/comments/{commentId}/like")
@@ -207,6 +207,6 @@ public class MangaController {
             @PathVariable UUID commentId,
             @RequestHeader("X-User-Id") String userId) {
         mangaService.toggleLikeComment(commentId, userId);
-        return ResponseEntity.ok(BaseResponse.<Void>ok(null));
+        return ResponseEntity.ok(BaseResponse.<Void>ok());
     }
 }
