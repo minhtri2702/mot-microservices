@@ -1,33 +1,12 @@
-version: "3.8"
-
 services:
 
-  mot-postgres:
-    image: postgres:15
-    container_name: mot-postgres
-    environment:
-      POSTGRES_DB: mot_db
-      POSTGRES_USER: mot_admin
-      POSTGRES_PASSWORD: "0000"
-    ports:
-      - "5432:5432"
-    volumes:
-      - mot-db-data:/var/lib/postgresql/data
-
-  auth-service:
+  account-service:
     build:
-      context: ./auth-service
-    container_name: auth-service
-    ports:
-      - "9090:8080"
-    depends_on:
-      - mot-postgres
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://mot-postgres:5432/mot_db
-      SPRING_DATASOURCE_USERNAME: mot_admin
-      SPRING_DATASOURCE_PASSWORD: "0000"
-      SPRING_PROFILES_ACTIVE: docker
+      context: ./mot-microservices
+      dockerfile: account-service/Dockerfile
 
-volumes:
-  mot-db-data:
-
+  product-services:
+    build:
+      context: ./mot-microservices
+      dockerfile: product-services/Dockerfile
+      

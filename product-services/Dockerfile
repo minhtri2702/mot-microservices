@@ -1,23 +1,19 @@
-FROM openjdk:21-jdk-slim AS build
+FROM maven:3.9-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
-# Copy Maven wrapper and pom files
-COPY mvnw .
-COPY .mvn .mvn
 COPY pom.xml .
-COPY commons/pom.xml commons/
-COPY product-services/pom.xml product-services/
 
-# Copy source code
-COPY commons/src commons/src
-COPY product-services/src product-services/src
+COPY commons commons
+COPY account-service account-service
+COPY product-services product-services
 
-# Build the product-services module
-RUN ./mvnw clean package -pl product-services -am -DskipTests
+RUN mvn clean package \
+    -pl product-services \
+    -am \
+    -DskipTests
 
-# Runtime stage
-FROM openjdk:21-jdk-slim
+FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
@@ -25,4 +21,4 @@ COPY --from=build /app/product-services/target/*.jar app.jar
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar", "--spring.profiles.active=docker"]
+ENTRYPOINT ["java","-jar","app.jar","--spring.profiles.active=docker"]

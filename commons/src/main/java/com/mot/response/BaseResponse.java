@@ -31,6 +31,14 @@ public class BaseResponse<T> {
         return r;
     }
 
+    @SuppressWarnings("unchecked")
+    public static <T> BaseResponse<T> ok() {
+        BaseResponse<T> r = new BaseResponse<>();
+        r.success = true;
+        r.message = "SUCCESS";
+        return r;
+    }
+
     public static BaseResponse<?> error(String message) {
         BaseResponse<?> r = new BaseResponse<>();
         r.success = false;

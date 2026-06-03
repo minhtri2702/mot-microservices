@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.InputStream;
 
 @RestController
@@ -22,22 +23,32 @@ public class ImageController {
      * Proxy image from MinIO.
      * Frontend calls: GET /api/v1/images/{objectPath}
      * e.g. GET /api/v1/images/one-piece/one-piece.jpg
+     * 
+     * Supports both:
+     *   - /api/v1/images/slug/filename.jpg  (2 segments)
+     *   - /api/v1/images/path/to/image.jpg  (multiple segments)
      */
-    @GetMapping("/{slug}/{filename}")
-    public ResponseEntity<byte[]> getImage(
-            @PathVariable String slug,
-            @PathVariable String filename) {
+    @GetMapping("/**")
+    public ResponseEntity<byte[]> getImage(HttpServletRequest request) {
+        // Extract path after /api/v1/images/
+        String requestPath = request.getRequestURI();
+        String prefix = "/api/v1/images/";
+        String objectPath = requestPath.substring(requestPath.indexOf(prefix) + prefix.length());
 
-        String objectPath = slug + "/" + filename;
+        if (objectPath.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
         InputStream inputStream = minioService.getObject(objectPath);
 
         if (inputStream == null) {
+            log.warn("Image not found in MinIO: {}", objectPath);
             return ResponseEntity.notFound().build();
         }
 
         try {
             byte[] bytes = inputStream.readAllBytes();
-            String contentType = getContentType(filename);
+            String contentType = getContentType(objectPath);
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_TYPE, contentType)

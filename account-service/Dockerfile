@@ -1,9 +1,24 @@
-FROM openjdk:17-jdk-slim
+FROM maven:3.9-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
-COPY target/auth-service-1.0.0.jar app.jar
+COPY pom.xml .
 
-EXPOSE 9090
-ENTRYPOINT ["java", "-jar", "app.jar"]
+COPY commons commons
+COPY account-service account-service
+COPY product-services product-services
 
+RUN mvn clean package \
+    -pl account-service \
+    -am \
+    -DskipTests
+
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+COPY --from=build /app/account-service/target/*.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java","-jar","app.jar","--spring.profiles.active=docker"]
