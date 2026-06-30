@@ -18,7 +18,6 @@ import java.util.*;
 public class Manga {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(columnDefinition = "uuid")
     private UUID id;
 
