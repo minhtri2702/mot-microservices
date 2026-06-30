@@ -1,4 +1,4 @@
-package com.mot.productservices.dto;
+tôipackage com.mot.productservices.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,6 +18,7 @@ public class MangaSummaryDTO {
     private String coverImagePath;
     private String status;
     private String author;
+    private String description;
     private Long views;
     private Long likes;
     private Long followers;

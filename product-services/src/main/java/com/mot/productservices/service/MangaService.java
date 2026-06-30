@@ -368,6 +368,7 @@ public class MangaService {
                     .coverImagePath(coverUrl)
                     .status(manga.getStatus())
                     .author(manga.getAuthor())
+                    .description(manga.getDescription())
                     .views(manga.getViews())
                     .likes(manga.getLikes())
                     .followers(manga.getFollowers())
