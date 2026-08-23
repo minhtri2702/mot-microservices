@@ -8,8 +8,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-import java.util.Set;
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -21,7 +19,6 @@ public class SignupRequest {
     @Size(min = 3, max = 20 , message = "PassWord must be between 3 and 20 character")
     @ToString.Exclude
     private String passWord;
-    private Set<String> role ;
     @NotBlank(message = "Email is required")
     @Size(max = 50, message = "Email must not exceed 50 characters")
     @Email(message = "Email must be valid")

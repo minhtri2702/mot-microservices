@@ -171,7 +171,7 @@ public class DebeziumEvent {
     public String getOperation() {
         if (payload == null) return "UNKNOWN";
         return switch (payload.op) {
-            case "c" -> "CREATE";
+            case "c", "r" -> "CREATE";
             case "u" -> "UPDATE";
             case "d" -> "DELETE";
             default -> "UNKNOWN";

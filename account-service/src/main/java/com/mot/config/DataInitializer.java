@@ -23,10 +23,9 @@ public class DataInitializer implements CommandLineRunner {
         for (ERole role : ERole.values()) {
             if (roleRepository.findRoleByName(role).isEmpty()) {
                 Role newRole = new Role();
-                newRole.setId(role.ordinal() + 1); // Set ID manually: 1=ROLE_USER, 2=ROLE_ADMIN, 3=ROLE_MODERATOR
                 newRole.setName(role);
                 roleRepository.save(newRole);
-                log.info("Created role: {} with id={}", role.name(), role.ordinal() + 1);
+                log.info("Created role: {}", role.name());
             }
         }
     }

@@ -1,4 +1,4 @@
-tôipackage com.mot.productservices.dto;
+package com.mot.productservices.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

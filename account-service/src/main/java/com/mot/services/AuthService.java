@@ -9,7 +9,6 @@ import com.mot.entity.Role;
 import com.mot.entity.SocialAccounts;
 import com.mot.entity.User;
 import com.mot.enums.ERole;
-import com.mot.exception.MasterDataIsNotFound;
 import com.mot.exception.UnprocessableEntityException;
 import com.mot.payload.request.SignupRequest;
 import com.mot.repository.RoleRepository;
@@ -19,11 +18,12 @@ import com.mot.payload.response.JwtResponse;
 import com.mot.security.JwtUtil;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.security.Key;
 import java.util.Collections;
@@ -42,6 +42,7 @@ public class AuthService {
     private final RoleRepository roleRepository;
     @Autowired
     private final SocialAccountsRepository socialAccountsRepository;
+    private final PasswordEncoder passwordEncoder;
     @Autowired
     private JwtUtil jwtUtil;
 
@@ -55,33 +56,17 @@ public class AuthService {
         User user = new User();
         user.setEmail(signupRequest.getEmail());
         user.setUserName(signupRequest.getUserName());
-        user.setPassword(signupRequest.getPassWord());
+        user.setPassword(passwordEncoder.encode(signupRequest.getPassWord()));
         user.setActive(true);
 
 
         SocialAccounts socialAccounts = new SocialAccounts();
         socialAccounts.setUser(user);
         socialAccounts.setProvider("manual registration");
-        Set<String> sRole = signupRequest.getRole();
         Set<Role> roles = new HashSet<>();
-        Role role = roleRepository.findRoleByName(ERole.ROLE_USER).orElseThrow(() -> new MasterDataIsNotFound("ERROR: Role data is not found."));
-        if (CollectionUtils.isEmpty(sRole)) {
-            roles.add(role);
-            user.setRoles(roles);
-        }else{
-            sRole.forEach(r-> {
-                String rl = r == null ? "" : r.trim().toUpperCase();
-                switch (r) {
-                    case "ADMIN" , "ROLE_ADMIN":
-                        Role roleAdmin = roleRepository.findRoleByName(ERole.ROLE_ADMIN).orElseThrow(()->new MasterDataIsNotFound("Error: Role is not found."));
-                        roles.add(roleAdmin);
-                    default:
-                        Role roleUser = roleRepository.findRoleByName(ERole.ROLE_USER).orElseThrow(()->new MasterDataIsNotFound("Error: Role is not found."));
-                        roles.add(roleUser);
-                }
-
-            });
-        }
+        Role role = getOrCreateRole(ERole.ROLE_USER);
+        // Public signup must never accept roles supplied by the client.
+        roles.add(role);
         user.setRoles(roles);
         user = userRepository.save(user);
         socialAccounts = socialAccountsRepository.save(socialAccounts);
@@ -91,8 +76,23 @@ public class AuthService {
         User user = userRepository.findWithRolesByUserName(username)
                 .orElseThrow(() -> new UnprocessableEntityException("Invalid username or password"));
 
-        if (!password.equals(user.getPassword())) {
+        if (socialAccountsRepository.existsByUser_IdAndProvider(user.getId(), "google")) {
+            throw new UnprocessableEntityException("Use Google sign-in for this account");
+        }
+
+        String storedPassword = user.getPassword();
+        boolean passwordMatches = storedPassword != null &&
+                (storedPassword.startsWith("$2")
+                        ? passwordEncoder.matches(password, storedPassword)
+                        : password.equals(storedPassword));
+        if (!passwordMatches) {
             throw new UnprocessableEntityException("Invalid username or password");
+        }
+
+        // Transparently migrate accounts created before BCrypt was enabled.
+        if (!storedPassword.startsWith("$2")) {
+            user.setPassword(passwordEncoder.encode(password));
+            userRepository.save(user);
         }
 
         String token = jwtUtil.generateToken(user);
@@ -100,9 +100,10 @@ public class AuthService {
                 .map(role -> role.getName().name())
                 .collect(Collectors.toList());
 
-        return new JwtResponse(token, "Bearer", user.getId(), user.getUserName(), user.getEmail(), roles);
+        return new JwtResponse(token, "Bearer", user.getId().toString(), user.getUserName(), user.getEmail(), roles);
     }
 
+    @Transactional
     public JwtResponse googleLogin(String idToken) {
         try {
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
@@ -131,21 +132,28 @@ public class AuthService {
                 user = new User();
                 user.setEmail(email);
                 user.setUserName(name != null ? name : email.split("@")[0]);
-                user.setPassword(googleId); // Use google ID as password
+                user.setPassword(null);
                 user.setActive(true);
                 user.setAvatarUrl(avatarUrl);
 
-                Set<Role> roles = new HashSet<>();
-                Role role = roleRepository.findRoleByName(ERole.ROLE_USER)
-                        .orElseThrow(() -> new MasterDataIsNotFound("ERROR: Role data is not found."));
-                roles.add(role);
-                user.setRoles(roles);
                 user = userRepository.save(user);
 
                 SocialAccounts socialAccounts = new SocialAccounts();
                 socialAccounts.setUser(user);
                 socialAccounts.setProvider("google");
+                socialAccounts.setProviderId(googleId);
                 socialAccountsRepository.save(socialAccounts);
+            }
+
+            // Master role data may be missing after a database restore. Repair it
+            // here and ensure both new and existing Google users keep a base role.
+            Role userRole = getOrCreateRole(ERole.ROLE_USER);
+            if (user.getRoles() == null) {
+                user.setRoles(new HashSet<>());
+            }
+            if (user.getRoles().stream().noneMatch(role -> role.getName() == ERole.ROLE_USER)) {
+                user.getRoles().add(userRole);
+                user = userRepository.save(user);
             }
 
             String token = jwtUtil.generateToken(user);
@@ -153,7 +161,7 @@ public class AuthService {
                     .map(role -> role.getName().name())
                     .collect(Collectors.toList());
 
-            return new JwtResponse(token, "Bearer", user.getId(), user.getUserName(), user.getEmail(), roles);
+            return new JwtResponse(token, "Bearer", user.getId().toString(), user.getUserName(), user.getEmail(), roles);
         } catch (Exception e) {
             throw new UnprocessableEntityException("Google login failed: " + e.getMessage());
         }
@@ -161,5 +169,13 @@ public class AuthService {
 
     private Key key() {
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
+    }
+
+    private Role getOrCreateRole(ERole roleName) {
+        return roleRepository.findRoleByName(roleName).orElseGet(() -> {
+            Role role = new Role();
+            role.setName(roleName);
+            return roleRepository.save(role);
+        });
     }
 }

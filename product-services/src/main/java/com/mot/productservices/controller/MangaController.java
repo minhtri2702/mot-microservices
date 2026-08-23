@@ -5,6 +5,9 @@ import com.mot.productservices.service.MangaService;
 import com.mot.response.BaseResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -122,8 +125,10 @@ public class MangaController {
     @GetMapping("/user/{userId}/reading-history")
     public ResponseEntity<BaseResponse<List<ReadingHistoryDTO>>> getReadingHistory(
             @PathVariable String userId,
-            @RequestParam(defaultValue = "10") int limit) {
-        List<ReadingHistoryDTO> result = mangaService.getReadingHistory(userId, limit);
+            @RequestParam(defaultValue = "10") int limit,
+            Authentication authentication) {
+        String authenticatedUserId = requireMatchingUser(userId, authentication);
+        List<ReadingHistoryDTO> result = mangaService.getReadingHistory(authenticatedUserId, limit);
         return ResponseEntity.ok(BaseResponse.<List<ReadingHistoryDTO>>ok(result));
     }
 
@@ -132,24 +137,27 @@ public class MangaController {
     @PostMapping("/user/{userId}/favorites/{mangaId}")
     public ResponseEntity<BaseResponse<Void>> addFavorite(
             @PathVariable String userId,
-            @PathVariable UUID mangaId) {
-        mangaService.addFavorite(userId, mangaId);
+            @PathVariable UUID mangaId,
+            Authentication authentication) {
+        mangaService.addFavorite(requireMatchingUser(userId, authentication), mangaId);
         return ResponseEntity.ok(BaseResponse.<Void>ok());
     }
 
     @DeleteMapping("/user/{userId}/favorites/{mangaId}")
     public ResponseEntity<BaseResponse<Void>> removeFavorite(
             @PathVariable String userId,
-            @PathVariable UUID mangaId) {
-        mangaService.removeFavorite(userId, mangaId);
+            @PathVariable UUID mangaId,
+            Authentication authentication) {
+        mangaService.removeFavorite(requireMatchingUser(userId, authentication), mangaId);
         return ResponseEntity.ok(BaseResponse.<Void>ok());
     }
 
     @GetMapping("/user/{userId}/favorites/{mangaId}/check")
     public ResponseEntity<BaseResponse<Boolean>> isFavorite(
             @PathVariable String userId,
-            @PathVariable UUID mangaId) {
-        boolean result = mangaService.isFavorite(userId, mangaId);
+            @PathVariable UUID mangaId,
+            Authentication authentication) {
+        boolean result = mangaService.isFavorite(requireMatchingUser(userId, authentication), mangaId);
         return ResponseEntity.ok(BaseResponse.<Boolean>ok(result));
     }
 
@@ -157,8 +165,10 @@ public class MangaController {
     public ResponseEntity<BaseResponse<PagedResponseDTO<FavoriteDTO>>> getFavorites(
             @PathVariable String userId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        PagedResponseDTO<FavoriteDTO> result = mangaService.getFavorites(userId, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        PagedResponseDTO<FavoriteDTO> result = mangaService.getFavorites(
+                requireMatchingUser(userId, authentication), page, size);
         return ResponseEntity.ok(BaseResponse.<PagedResponseDTO<FavoriteDTO>>ok(result));
     }
 
@@ -169,7 +179,8 @@ public class MangaController {
             @PathVariable UUID mangaId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestHeader(value = "X-User-Id", required = false) String currentUserId) {
+            Authentication authentication) {
+        String currentUserId = isAuthenticated(authentication) ? authentication.getName() : null;
         PagedResponseDTO<CommentDTO> result = mangaService.getComments(mangaId, page, size, currentUserId);
         return ResponseEntity.ok(BaseResponse.<PagedResponseDTO<CommentDTO>>ok(result));
     }
@@ -178,10 +189,11 @@ public class MangaController {
     public ResponseEntity<BaseResponse<CommentDTO>> addComment(
             @PathVariable UUID mangaId,
             @RequestBody CommentRequest request,
-            @RequestHeader("X-User-Id") String userId,
-            @RequestHeader("X-User-Name") String username,
-            @RequestHeader(value = "X-User-Avatar", required = false) String avatarUrl) {
-        CommentDTO result = mangaService.addComment(mangaId, userId, username, avatarUrl, request);
+            Authentication authentication) {
+        String userId = requireAuthenticatedUser(authentication);
+        String username = authentication.getDetails() instanceof String
+                ? (String) authentication.getDetails() : userId;
+        CommentDTO result = mangaService.addComment(mangaId, userId, username, null, request);
         return ResponseEntity.ok(BaseResponse.<CommentDTO>ok(result));
     }
 
@@ -189,24 +201,58 @@ public class MangaController {
     public ResponseEntity<BaseResponse<CommentDTO>> updateComment(
             @PathVariable UUID commentId,
             @RequestBody CommentRequest request,
-            @RequestHeader("X-User-Id") String userId) {
-        CommentDTO result = mangaService.updateComment(commentId, userId, request.getContent());
+            Authentication authentication) {
+        CommentDTO result = mangaService.updateComment(
+                commentId, requireAuthenticatedUser(authentication), request.getContent());
         return ResponseEntity.ok(BaseResponse.<CommentDTO>ok(result));
     }
 
     @DeleteMapping("/comments/{commentId}")
     public ResponseEntity<BaseResponse<Void>> deleteComment(
             @PathVariable UUID commentId,
-            @RequestHeader("X-User-Id") String userId) {
-        mangaService.deleteComment(commentId, userId);
+            Authentication authentication) {
+        mangaService.deleteComment(commentId, requireAuthenticatedUser(authentication));
         return ResponseEntity.ok(BaseResponse.<Void>ok());
     }
 
     @PostMapping("/comments/{commentId}/like")
     public ResponseEntity<BaseResponse<Void>> toggleLikeComment(
             @PathVariable UUID commentId,
-            @RequestHeader("X-User-Id") String userId) {
-        mangaService.toggleLikeComment(commentId, userId);
+            Authentication authentication) {
+        mangaService.toggleLikeComment(commentId, requireAuthenticatedUser(authentication));
         return ResponseEntity.ok(BaseResponse.<Void>ok());
+    }
+
+    // ==================== User Comments ====================
+
+    @GetMapping("/user/{userId}/comments")
+    public ResponseEntity<BaseResponse<PagedResponseDTO<CommentDTO>>> getUserComments(
+            @PathVariable String userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        PagedResponseDTO<CommentDTO> result = mangaService.getUserComments(
+                requireMatchingUser(userId, authentication), page, size);
+        return ResponseEntity.ok(BaseResponse.<PagedResponseDTO<CommentDTO>>ok(result));
+    }
+
+    private String requireAuthenticatedUser(Authentication authentication) {
+        if (!isAuthenticated(authentication)) {
+            throw new AccessDeniedException("Authentication is required");
+        }
+        return authentication.getName();
+    }
+
+    private boolean isAuthenticated(Authentication authentication) {
+        return authentication != null && authentication.isAuthenticated()
+                && !(authentication instanceof AnonymousAuthenticationToken);
+    }
+
+    private String requireMatchingUser(String requestedUserId, Authentication authentication) {
+        String authenticatedUserId = requireAuthenticatedUser(authentication);
+        if (!authenticatedUserId.equals(requestedUserId)) {
+            throw new AccessDeniedException("Cannot access another user's data");
+        }
+        return authenticatedUserId;
     }
 }

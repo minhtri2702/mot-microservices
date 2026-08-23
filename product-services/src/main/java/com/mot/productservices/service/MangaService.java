@@ -542,6 +542,27 @@ public class MangaService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public PagedResponseDTO<CommentDTO> getUserComments(String userId, int page, int size) {
+        UUID userUuid = UUID.fromString(userId);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Comment> commentPage = commentRepository.findByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(userUuid, pageable);
+
+        List<CommentDTO> dtos = commentPage.getContent().stream()
+                .map(c -> toCommentDTO(c, userId))
+                .collect(Collectors.toList());
+
+        return new PagedResponseDTO<>(
+                dtos,
+                commentPage.getNumber(),
+                commentPage.getSize(),
+                commentPage.getTotalElements(),
+                commentPage.getTotalPages(),
+                commentPage.isLast(),
+                commentPage.isFirst()
+        );
+    }
+
     private CommentDTO toCommentDTO(Comment comment, String currentUserId) {
         UUID currentUserUuid = currentUserId != null ? UUID.fromString(currentUserId) : null;
         boolean isLiked = currentUserUuid != null &&

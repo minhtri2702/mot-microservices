@@ -1,6 +1,7 @@
 # Build
-/target/
+**/target/
 /build/
+*.jar
 
 # IDE
 .idea/
@@ -18,4 +19,3 @@ Thumbs.db
 .env
 application-local.yml
 application-dev.yml
-

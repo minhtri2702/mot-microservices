@@ -39,4 +39,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
     @Modifying
     @Query("UPDATE Comment c SET c.likeCount = CASE WHEN c.likeCount > 0 THEN c.likeCount - 1 ELSE 0 END WHERE c.id = :id")
     void decrementLikeCount(@Param("id") UUID id);
+
+    // Get comments by user ID, ordered by newest first
+    Page<Comment> findByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 }

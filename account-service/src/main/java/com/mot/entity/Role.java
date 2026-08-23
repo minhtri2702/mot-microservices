@@ -15,7 +15,8 @@ import java.util.Collection;
 @Setter
 public class Role {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "roles_seq")
+    @SequenceGenerator(name = "roles_seq", sequenceName = "roles_id_seq", allocationSize = 1)
     private Integer id;
 
     @Enumerated(EnumType.STRING)

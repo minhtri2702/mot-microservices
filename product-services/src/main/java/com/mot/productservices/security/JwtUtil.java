@@ -1,6 +1,5 @@
-package com.mot.security;
+package com.mot.productservices.security;
 
-import com.mot.entity.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -10,7 +9,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.util.Date;
 
 @Component
 public class JwtUtil {
@@ -20,20 +18,6 @@ public class JwtUtil {
     @Value("${mot.app.jwtSecret}")
     private String jwtSecret;
 
-    @Value("${mot.app.jwtExpirationMs}")
-    private int jwtExpirationMs;
-
-    public String generateToken(User user) {
-        return Jwts.builder()
-                .setSubject(user.getId().toString())
-                .claim("username", user.getUserName())
-                .claim("email", user.getEmail())
-                .setIssuedAt(new Date())
-                .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
-                .compact();
-    }
-
     public String getUserNameFromJwtToken(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
@@ -41,6 +25,15 @@ public class JwtUtil {
                 .parseClaimsJws(token)
                 .getBody()
                 .get("username", String.class);
+    }
+
+    public String getUserIdFromJwtToken(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .getSubject();
     }
 
     public boolean validateToken(String authToken) {

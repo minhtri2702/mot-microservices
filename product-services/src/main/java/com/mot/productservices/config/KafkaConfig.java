@@ -34,9 +34,10 @@ public class KafkaConfig {
         factory.setConsumerFactory(consumerFactory);
         factory.setConcurrency(1);
 
-        // Xử lý lỗi: thử lại 3 lần, mỗi lần cách 1 giây
+        // Manga and chapter events are in separate topics, so a chapter may
+        // arrive first. Keep its offset uncommitted long enough for manga sync.
         CommonErrorHandler errorHandler = new DefaultErrorHandler(
-                new FixedBackOff(1000L, 3L));
+                new FixedBackOff(1000L, 60L));
         factory.setCommonErrorHandler(errorHandler);
 
         return factory;

@@ -54,6 +54,7 @@ public class DebeziumEventConsumer {
             debeziumSyncService.processMangaEvent(event);
         } catch (Exception e) {
             log.error("Failed to process manga event: {}", e.getMessage());
+            throw new IllegalStateException("Failed to process manga event", e);
         }
     }
 
@@ -78,6 +79,7 @@ public class DebeziumEventConsumer {
             debeziumSyncService.processChapterEvent(event);
         } catch (Exception e) {
             log.error("Failed to process chapter event: {}", e.getMessage());
+            throw new IllegalStateException("Failed to process chapter event", e);
         }
     }
 
@@ -102,6 +104,7 @@ public class DebeziumEventConsumer {
             debeziumSyncService.processChapterImageEvent(event);
         } catch (Exception e) {
             log.error("Failed to process chapter_image event: {}", e.getMessage());
+            throw new IllegalStateException("Failed to process chapter image event", e);
         }
     }
 
@@ -121,6 +124,7 @@ public class DebeziumEventConsumer {
             debeziumSyncService.processMangaGenreEvent(event);
         } catch (Exception e) {
             log.error("Failed to process manga_genre event: {}", e.getMessage());
+            throw new IllegalStateException("Failed to process manga genre event", e);
         }
     }
 }

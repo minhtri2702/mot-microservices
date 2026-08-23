@@ -5,6 +5,7 @@ import com.mot.productservices.entity.Chapter;
 import com.mot.productservices.entity.ChapterImage;
 import com.mot.productservices.entity.Manga;
 import com.mot.productservices.repository.ChapterRepository;
+import com.mot.productservices.repository.ChapterImageRepository;
 import com.mot.productservices.repository.MangaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ public class DebeziumSyncService {
 
     private final MangaRepository mangaRepository;
     private final ChapterRepository chapterRepository;
+    private final ChapterImageRepository chapterImageRepository;
     private final CacheManager cacheManager;
 
     /**
@@ -179,8 +181,8 @@ public class DebeziumSyncService {
 
         // Kiểm tra manga đã tồn tại trong mot_db chưa
         if (!mangaRepository.existsById(mangaId)) {
-            log.warn("Manga {} not found in mot_db, cannot sync chapter", mangaId);
-            return;
+            throw new IllegalStateException(
+                    "Manga " + mangaId + " not available yet; retrying chapter event");
         }
 
         switch (operation) {
@@ -243,14 +245,53 @@ public class DebeziumSyncService {
     @Transactional
     public void processChapterImageEvent(DebeziumEvent event) {
         String operation = event.getOperation();
-        String mangaIdStr = event.getMangaIdFromChapter();
+        DebeziumEvent.After after = event.getPayload().getAfter();
+        DebeziumEvent.Before before = event.getPayload().getBefore();
+        Integer chapterId = event.getChapterId();
 
-        log.info("Processing chapter_image event: op={}, mangaId={}", operation, mangaIdStr);
-
-        // Chapter_image thay đổi -> xoá cache manga detail (vì ảnh trong chapter)
-        if (mangaIdStr != null) {
-            evictCacheEntry("mangaDetail", mangaIdStr);
+        if (chapterId == null) {
+            log.warn("Cannot process chapter_image event without chapter_id: op={}", operation);
+            return;
         }
+
+        Chapter chapter = chapterRepository.findById(chapterId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Chapter " + chapterId + " not available yet; retrying chapter_image event"));
+
+        Integer pageOrder = after != null ? after.getPageOrder()
+                : before != null ? before.getPageOrder() : null;
+        if (pageOrder == null) {
+            log.warn("Cannot process chapter_image event without page_order: chapterId={}", chapterId);
+            return;
+        }
+
+        switch (operation) {
+            case "CREATE", "UPDATE" -> {
+                if (after == null || after.getImageUrl() == null) {
+                    log.warn("Cannot upsert chapter_image with null after/image_url: chapterId={}, page={}",
+                            chapterId, pageOrder);
+                    return;
+                }
+
+                ChapterImage image = chapterImageRepository
+                        .findByChapterIdAndPageOrder(chapterId, pageOrder)
+                        .orElseGet(() -> ChapterImage.builder()
+                                .chapter(chapter)
+                                .pageOrder(pageOrder)
+                                .build());
+                image.setImageUrl(after.getImageUrl());
+                image.setImagePath(after.getImagePath());
+                chapterImageRepository.save(image);
+                log.debug("Upserted chapter_image: chapterId={}, page={}", chapterId, pageOrder);
+            }
+            case "DELETE" -> {
+                chapterImageRepository.deleteByChapterIdAndPageOrder(chapterId, pageOrder);
+                log.debug("Deleted chapter_image: chapterId={}, page={}", chapterId, pageOrder);
+            }
+            default -> log.warn("Unknown chapter_image operation: {}", operation);
+        }
+
+        evictCacheEntry("mangaDetail", chapter.getManga().getId().toString());
     }
 
     /**
