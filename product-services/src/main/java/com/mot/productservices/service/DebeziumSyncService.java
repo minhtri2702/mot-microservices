@@ -34,6 +34,7 @@ public class DebeziumSyncService {
     private final ChapterRepository chapterRepository;
     private final ChapterImageRepository chapterImageRepository;
     private final CacheManager cacheManager;
+    private final UserNotificationService userNotificationService;
 
     /**
      * Xử lý event từ bảng manga.
@@ -282,6 +283,9 @@ public class DebeziumSyncService {
                 image.setImageUrl(after.getImageUrl());
                 image.setImagePath(after.getImagePath());
                 chapterImageRepository.save(image);
+                if ("CREATE".equals(operation) && pageOrder == 1) {
+                    userNotificationService.createForNewChapter(chapterId);
+                }
                 log.debug("Upserted chapter_image: chapterId={}, page={}", chapterId, pageOrder);
             }
             case "DELETE" -> {
@@ -293,6 +297,7 @@ public class DebeziumSyncService {
 
         evictCacheEntry("mangaDetail", chapter.getManga().getId().toString());
     }
+
 
     /**
      * Xử lý event từ bảng manga_genre.

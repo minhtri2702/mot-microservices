@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.text.Normalizer;
 
 @Service
 @RequiredArgsConstructor
@@ -160,26 +161,28 @@ public class MangaService {
     @Transactional(readOnly = true)
     public PagedResponseDTO<MangaSummaryDTO> searchManga(String keyword, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<Manga> mangaPage;
+        String normalizedKeyword = normalizeSearch(keyword);
+        Page<Manga> mangaPage = Page.empty(pageable);
 
         try {
-            // Try full-text search first (nhanh, chính xác)
-            mangaPage = mangaRepository.searchByFullText(keyword, pageable);
+            // One indexed query handles Vietnamese without accents and small typos.
+            mangaPage = mangaRepository.searchNormalized(normalizedKeyword, pageable);
         } catch (Exception e) {
-            log.warn("Full-text search failed, falling back to LIKE search: {}", e.getMessage());
-            mangaPage = mangaRepository.searchByTitle(keyword, pageable);
-        }
-
-        // Nếu full-text không có kết quả, thử fuzzy search (sửa lỗi chính tả)
-        if (mangaPage.isEmpty() && keyword.length() >= 3) {
+            log.warn("Normalized search failed, falling back to full-text: {}", e.getMessage());
             try {
-                mangaPage = mangaRepository.searchByFuzzy(keyword, pageable);
-            } catch (Exception e) {
-                log.warn("Fuzzy search failed: {}", e.getMessage());
+                mangaPage = mangaRepository.searchByFullText(keyword, pageable);
+            } catch (Exception ignored) {
+                mangaPage = mangaRepository.searchByTitle(keyword, pageable);
             }
         }
 
         return toPagedResponse(mangaPage);
+    }
+
+    private String normalizeSearch(String value) {
+        String normalized = Normalizer.normalize(value == null ? "" : value.trim().toLowerCase(),
+                Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return normalized.replace('đ', 'd').replaceAll("\\s+", " ");
     }
 
     // ==================== Genre ====================

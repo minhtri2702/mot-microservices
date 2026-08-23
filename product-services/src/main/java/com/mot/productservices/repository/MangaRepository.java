@@ -56,6 +56,30 @@ public interface MangaRepository extends JpaRepository<Manga, UUID> {
            nativeQuery = true)
     Page<Manga> searchByFuzzy(@Param("keyword") String keyword, Pageable pageable);
 
+    @Query(value = """
+        SELECT m.* FROM manga m
+        WHERE immutable_unaccent(LOWER(COALESCE(m.title, ''))) % :keyword
+           OR immutable_unaccent(LOWER(COALESCE(m.title, '') || ' ' ||
+              COALESCE(m.alternative_titles, '') || ' ' || COALESCE(m.author, '')))
+              % :keyword
+           OR immutable_unaccent(LOWER(COALESCE(m.title, '') || ' ' ||
+              COALESCE(m.alternative_titles, '') || ' ' || COALESCE(m.author, '')))
+              LIKE '%' || :keyword || '%'
+        ORDER BY CASE WHEN immutable_unaccent(LOWER(m.title)) LIKE :keyword || '%' THEN 0 ELSE 1 END,
+                 similarity(immutable_unaccent(LOWER(COALESCE(m.title, ''))), :keyword) DESC,
+                 m.views DESC
+        """, countQuery = """
+        SELECT COUNT(*) FROM manga m
+        WHERE immutable_unaccent(LOWER(COALESCE(m.title, ''))) % :keyword
+           OR immutable_unaccent(LOWER(COALESCE(m.title, '') || ' ' ||
+              COALESCE(m.alternative_titles, '') || ' ' || COALESCE(m.author, '')))
+              % :keyword
+           OR immutable_unaccent(LOWER(COALESCE(m.title, '') || ' ' ||
+              COALESCE(m.alternative_titles, '') || ' ' || COALESCE(m.author, '')))
+              LIKE '%' || :keyword || '%'
+        """, nativeQuery = true)
+    Page<Manga> searchNormalized(@Param("keyword") String keyword, Pageable pageable);
+
     // Latest updated manga
     Page<Manga> findAllByOrderByUpdatedAtDesc(Pageable pageable);
 

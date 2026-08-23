@@ -12,4 +12,5 @@ public interface ChapterImageRepository extends JpaRepository<ChapterImage, Inte
     Optional<ChapterImage> findByChapterIdAndPageOrder(Integer chapterId, Integer pageOrder);
 
     void deleteByChapterIdAndPageOrder(Integer chapterId, Integer pageOrder);
+
 }
