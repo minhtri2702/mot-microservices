@@ -18,6 +18,8 @@ import java.util.stream.Collectors;
 
 @Repository
 public interface MangaRepository extends JpaRepository<Manga, UUID> {
+    @Query(value = "SELECT COUNT(*) FROM manga WHERE cover_image_path IS NULL OR BTRIM(cover_image_path) = ''", nativeQuery = true)
+    long countMissingCovers();
 
     @EntityGraph(attributePaths = {"genres"})
     @Query("SELECT m FROM Manga m WHERE m.id = :id")

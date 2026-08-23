@@ -38,7 +38,9 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                         new UsernamePasswordAuthenticationToken(
                                 userId,
                                 null,
-                                List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                                jwtUtil.getRolesFromJwtToken(jwt).stream()
+                                        .map(SimpleGrantedAuthority::new)
+                                        .toList());
                 // Controllers use the authenticated subject and username instead
                 // of trusting identity headers supplied by the browser.
                 authentication.setDetails(username);

@@ -27,6 +27,7 @@ public class ProductSecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/manga/**",
                                 "/api/v1/genres/**",

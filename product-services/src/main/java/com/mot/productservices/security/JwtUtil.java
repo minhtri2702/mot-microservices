@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.util.List;
 
 @Component
 public class JwtUtil {
@@ -34,6 +35,23 @@ public class JwtUtil {
                 .parseClaimsJws(token)
                 .getBody()
                 .getSubject();
+    }
+
+    public List<String> getRolesFromJwtToken(String token) {
+        Object roles = Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .get("roles");
+        if (!(roles instanceof List<?> roleList)) return List.of("ROLE_USER");
+        List<String> parsed = roleList.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .filter(role -> role.startsWith("ROLE_"))
+                .distinct()
+                .toList();
+        return parsed.isEmpty() ? List.of("ROLE_USER") : parsed;
     }
 
     public boolean validateToken(String authToken) {
