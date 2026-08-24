@@ -106,9 +106,11 @@ public class MangaService {
         Chapter chapter = chapterRepository.findByIdAndMangaIdWithImages(chapterId, mangaId)
                 .orElseThrow(() -> new NoSuchElementException("Chapter not found"));
 
-        // Increment view count
-        chapter.setViewCount(chapter.getViewCount() == null ? 1L : chapter.getViewCount() + 1L);
-        chapterRepository.save(chapter);
+        // Atomic increment avoids lost updates when multiple readers open the
+        // same chapter concurrently. Keep the response value in sync without
+        // asking Hibernate to write the whole chapter entity back.
+        chapterRepository.incrementViewCount(chapterId);
+        Long responseViewCount = chapter.getViewCount() == null ? 1L : chapter.getViewCount() + 1L;
 
         // Get navigation
         ChapterNavigationDTO navigation = getChapterNavigation(mangaId, chapter.getChapterNumber());
@@ -132,7 +134,7 @@ public class MangaService {
                 .id(chapter.getId())
                 .chapterNumber(chapter.getChapterNumber())
                 .chapterName(chapter.getChapterName())
-                .viewCount(chapter.getViewCount())
+                .viewCount(responseViewCount)
                 .createdAt(chapter.getCreatedAt() != null ? chapter.getCreatedAt().format(DTF) : null)
                 .imageUrls(imageUrls)
                 .navigation(navigation)
@@ -142,11 +144,12 @@ public class MangaService {
     }
 
     private ChapterNavigationDTO getChapterNavigation(UUID mangaId, Double currentChapterNumber) {
-        List<Chapter> prevChapters = chapterRepository.findPrevChapter(mangaId, currentChapterNumber);
-        List<Chapter> nextChapters = chapterRepository.findNextChapter(mangaId, currentChapterNumber);
-
-        Chapter prev = prevChapters.isEmpty() ? null : prevChapters.get(0);
-        Chapter next = nextChapters.isEmpty() ? null : nextChapters.get(0);
+        Chapter prev = chapterRepository
+                .findFirstByMangaIdAndChapterNumberLessThanOrderByChapterNumberDesc(mangaId, currentChapterNumber)
+                .orElse(null);
+        Chapter next = chapterRepository
+                .findFirstByMangaIdAndChapterNumberGreaterThanOrderByChapterNumberAsc(mangaId, currentChapterNumber)
+                .orElse(null);
 
         return ChapterNavigationDTO.builder()
                 .prevChapterId(prev != null ? prev.getId() : null)

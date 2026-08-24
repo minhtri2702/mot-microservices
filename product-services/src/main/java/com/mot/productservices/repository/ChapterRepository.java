@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -14,6 +15,29 @@ import java.util.UUID;
 
 @Repository
 public interface ChapterRepository extends JpaRepository<Chapter, Integer> {
+
+    @Modifying
+    @Query(value = """
+            INSERT INTO chapter (
+                id, manga_id, chapter_number, chapter_name, url,
+                view_count, created_at, updated_at
+            ) VALUES (
+                :id, :mangaId, :chapterNumber, :chapterName, :url,
+                0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+            ON CONFLICT (id) DO UPDATE SET
+                manga_id = EXCLUDED.manga_id,
+                chapter_number = EXCLUDED.chapter_number,
+                chapter_name = EXCLUDED.chapter_name,
+                url = EXCLUDED.url,
+                updated_at = CURRENT_TIMESTAMP
+            """, nativeQuery = true)
+    void upsertFromCrawler(
+            @Param("id") Integer id,
+            @Param("mangaId") UUID mangaId,
+            @Param("chapterNumber") Double chapterNumber,
+            @Param("chapterName") String chapterName,
+            @Param("url") String url);
 
     interface DataHealthIssueProjection {
         Integer getChapterId();
@@ -30,6 +54,10 @@ public interface ChapterRepository extends JpaRepository<Chapter, Integer> {
     Optional<Chapter> findByIdAndMangaIdWithImages(@Param("id") Integer id, @Param("mangaId") UUID mangaId);
 
     Optional<Chapter> findByUrl(String url);
+
+    @Modifying
+    @Query("UPDATE Chapter c SET c.viewCount = COALESCE(c.viewCount, 0) + 1 WHERE c.id = :id")
+    int incrementViewCount(@Param("id") Integer id);
 
     @Query("SELECT c FROM Chapter c WHERE c.manga.id = :mangaId ORDER BY c.chapterNumber DESC")
     List<Chapter> findLatestChapters(@Param("mangaId") UUID mangaId);
@@ -79,9 +107,9 @@ public interface ChapterRepository extends JpaRepository<Chapter, Integer> {
             """, nativeQuery = true)
     long countDuplicatePageOrders();
 
-    @Query("SELECT c FROM Chapter c WHERE c.manga.id = :mangaId AND c.chapterNumber < :chapterNumber ORDER BY c.chapterNumber DESC")
-    List<Chapter> findPrevChapter(@Param("mangaId") UUID mangaId, @Param("chapterNumber") Double chapterNumber);
+    Optional<Chapter> findFirstByMangaIdAndChapterNumberLessThanOrderByChapterNumberDesc(
+            UUID mangaId, Double chapterNumber);
 
-    @Query("SELECT c FROM Chapter c WHERE c.manga.id = :mangaId AND c.chapterNumber > :chapterNumber ORDER BY c.chapterNumber ASC")
-    List<Chapter> findNextChapter(@Param("mangaId") UUID mangaId, @Param("chapterNumber") Double chapterNumber);
+    Optional<Chapter> findFirstByMangaIdAndChapterNumberGreaterThanOrderByChapterNumberAsc(
+            UUID mangaId, Double chapterNumber);
 }

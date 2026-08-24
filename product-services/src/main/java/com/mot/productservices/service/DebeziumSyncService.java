@@ -159,11 +159,18 @@ public class DebeziumSyncService {
     public void processChapterEvent(DebeziumEvent event) {
         String operation = event.getOperation();
         String mangaIdStr = event.getMangaIdFromChapter();
+        Integer chapterId = event.getChapterRecordId();
 
         // DELETE: xoá chapter khỏi mot_db
         if ("DELETE".equals(operation)) {
-            log.info("Processing DELETE event for chapter (mangaId={})", mangaIdStr);
-            // Chapter dùng id tự tăng (Integer), không có UUID -> cần xoá cache
+            if (chapterId == null) {
+                log.warn("Cannot process DELETE chapter event without source chapter ID");
+                return;
+            }
+            log.info("Processing DELETE event for chapter {} (mangaId={})", chapterId, mangaIdStr);
+            if (chapterRepository.existsById(chapterId)) {
+                chapterRepository.deleteById(chapterId);
+            }
             if (mangaIdStr != null) {
                 evictCacheEntry("mangaDetail", mangaIdStr);
                 evictCache("mangaListings");
@@ -173,8 +180,8 @@ public class DebeziumSyncService {
 
         // CREATE/UPDATE: cần có 'after' data
         DebeziumEvent.After after = event.getPayload().getAfter();
-        if (after == null || mangaIdStr == null) {
-            log.warn("Received chapter event with null 'after' or mangaId, operation: {}", operation);
+        if (after == null || mangaIdStr == null || chapterId == null) {
+            log.warn("Received chapter event without after, mangaId, or source chapter ID: op={}", operation);
             return;
         }
 
@@ -187,53 +194,20 @@ public class DebeziumSyncService {
         }
 
         switch (operation) {
-            case "CREATE" -> handleChapterCreate(after, mangaId);
-            case "UPDATE" -> handleChapterUpdate(after, mangaId);
+            case "CREATE", "UPDATE" -> upsertChapter(after, mangaId, chapterId);
             default -> log.warn("Unknown operation: {}", operation);
         }
     }
 
-    private void handleChapterCreate(DebeziumEvent.After after, UUID mangaId) {
-        // Kiểm tra chapter đã tồn tại qua url
-        if (chapterRepository.findByUrl(after.getUrl()).isPresent()) {
-            log.info("Chapter with url {} already exists, skipping", after.getUrl());
-            return;
-        }
-
-        Manga manga = mangaRepository.getReferenceById(mangaId);
-        Chapter chapter = Chapter.builder()
-                .manga(manga)
-                .chapterNumber(after.getChapterNumber())
-                .chapterName(after.getChapterName())
-                .url(after.getUrl())
-                .viewCount(0L)
-                .build();
-
-        chapterRepository.save(chapter);
-        log.info("Synced new chapter: {} (mangaId={})", after.getChapterName(), mangaId);
-
-        // Xoá cache
-        evictCacheEntry("mangaDetail", mangaId.toString());
-        evictCache("mangaListings");
-    }
-
-    private void handleChapterUpdate(DebeziumEvent.After after, UUID mangaId) {
-        Optional<Chapter> existing = chapterRepository.findByUrl(after.getUrl());
-        if (existing.isEmpty()) {
-            log.warn("Chapter with url {} not found, creating instead", after.getUrl());
-            handleChapterCreate(after, mangaId);
-            return;
-        }
-
-        Chapter chapter = existing.get();
-        chapter.setChapterNumber(after.getChapterNumber());
-        chapter.setChapterName(after.getChapterName());
-        chapter.setUrl(after.getUrl());
-
-        chapterRepository.save(chapter);
-        log.info("Updated chapter: {} (mangaId={})", after.getChapterName(), mangaId);
-
-        // Xoá cache
+    private void upsertChapter(DebeziumEvent.After after, UUID mangaId, Integer chapterId) {
+        chapterRepository.upsertFromCrawler(
+                chapterId,
+                mangaId,
+                after.getChapterNumber(),
+                after.getChapterName(),
+                after.getUrl());
+        log.info("Upserted chapter from crawler: id={}, name={}, mangaId={}",
+                chapterId, after.getChapterName(), mangaId);
         evictCacheEntry("mangaDetail", mangaId.toString());
         evictCache("mangaListings");
     }

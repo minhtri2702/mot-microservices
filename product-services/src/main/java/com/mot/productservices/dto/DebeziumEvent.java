@@ -168,6 +168,20 @@ public class DebeziumEvent {
         return null;
     }
 
+    /**
+     * Get the source primary key from a chapter event. Chapter IDs are kept
+     * identical in crawler_db and mot_db so chapter_image.chapter_id remains
+     * a valid reference after CDC synchronization.
+     */
+    public Integer getChapterRecordId() {
+        if (payload == null) return null;
+        String id = payload.after != null
+                ? payload.after.getId()
+                : payload.before != null ? payload.before.getId() : null;
+        if (id == null || id.isBlank()) return null;
+        return Integer.valueOf(id);
+    }
+
     public String getOperation() {
         if (payload == null) return "UNKNOWN";
         return switch (payload.op) {

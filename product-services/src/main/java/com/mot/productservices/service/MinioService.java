@@ -1,18 +1,14 @@
 package com.mot.productservices.service;
 
 import io.minio.GetObjectArgs;
-import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.errors.MinioException;
-import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -23,27 +19,6 @@ public class MinioService {
 
     @Value("${minio.bucket}")
     private String bucket;
-
-    @Value("${minio.endpoint}")
-    private String endpoint;
-
-    // Cache presigned URLs for 50 minutes (URLs expire in 1 hour)
-    private final ConcurrentHashMap<String, CacheEntry> presignedUrlCache = new ConcurrentHashMap<>();
-    private static final long CACHE_DURATION_MS = 50 * 60 * 1000L;
-
-    private static class CacheEntry {
-        final String url;
-        final long createdAt;
-
-        CacheEntry(String url) {
-            this.url = url;
-            this.createdAt = System.currentTimeMillis();
-        }
-
-        boolean isValid() {
-            return System.currentTimeMillis() - createdAt < CACHE_DURATION_MS;
-        }
-    }
 
     /**
      * Get an object from MinIO as InputStream.
@@ -70,22 +45,13 @@ public class MinioService {
      * Get a URL for an image via the internal image proxy.
      * Images are served through Nginx → product-services → MinIO.
      * This keeps MinIO internal and avoids exposing internal hostnames.
-     * Results are cached for 50 minutes.
+     * The proxy URL is deterministic, so caching it in application memory
+     * would only create an unbounded map without saving any MinIO request.
      */
     public String getPresignedUrl(String objectPath) {
         if (objectPath == null) return null;
 
-        // Check cache first
-        CacheEntry cached = presignedUrlCache.get(objectPath);
-        if (cached != null && cached.isValid()) {
-            return cached.url;
-        }
-
-        // Use image proxy URL instead of presigned MinIO URL
-        // This keeps MinIO internal and serves images through the API
-        String url = getPublicUrl(objectPath);
-        presignedUrlCache.put(objectPath, new CacheEntry(url));
-        return url;
+        return getPublicUrl(objectPath);
     }
 
     /**
